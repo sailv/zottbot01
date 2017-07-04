@@ -22,4 +22,4 @@ To build your own bots contact sales@godbtech.com
 ## Possible Errors & its workarounds
 ### Bug in Microsoft's Bot library.js
 ".\messages\node_modules\botbuilder\lib\bots\Library.js" might throw an error stating "logger" function undefined.
-This bug is to be manually fixed by copy-replacing it with the Library.js in ".\messages" folder.
+This bug is to be manually fixed by copy-replacing it with the Library.js from the root folder of this repository.

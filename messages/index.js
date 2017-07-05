@@ -157,16 +157,16 @@ bot.dialog('/', function (session)
 	//session.beginDialog('/demoImageCarousel');
 	
 	//Evaluate with LUIS API - to get Intents and Entities | Asynchronous call
-	LUISclient.predict(session.message.text, {
+	/*LUISclient.predict(session.message.text, {
 		onSuccess: function (response) { //On success of prediction
 			getIntentsAndEntities(response); 
 			//LUISReply
 			SendToXLBot(session); //Once LUIS Async call complets, send session + LUISReply to Xlapp
 		}, 
 		onFailure: function (err) { console.error(err); } //On failure of prediction
-	});
+	}); */
 	
-	
+	SendToXLBot(session); //Once LUIS Async call complets, send session + LUISReply to Xlapp
 });
 
 //....................................................................................

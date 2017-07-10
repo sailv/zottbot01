@@ -25,6 +25,10 @@ var LUISReply = {"topScoringIntent": "", "entities" : [] };
 //____________________________________________________________________________________
 //
 var XLAPP_NUMBER = 23103;
+var XL_APP_HOST='xlapp.cloware.com';
+
+//var XLAPP_NUMBER = 912;
+//var XL_APP_HOST='lxlapp.cloware.com';
 
 //____________________________________________________________________________________
 //
@@ -93,26 +97,80 @@ function getIntentsAndEntities(response) {
 //msg :: is the JSON msg to be sent, if not sent, the session.message.text would be used
 //q = 1 :: tells XLBot NOT to parse the response via contextual processing (like converting 1 lac to 100000, etc)
 function SendToXLBot(session, msg, q){
+	
 	var _http = require('http');
+	var http_cookie='';
 	var res = '';
 	msg = msg || session.message.text;
-	var url = '/voiceui/setup/msbot.php?a='+XLAPP_NUMBER+'&u='+session.message.user.id+'&m='+encodeURI(msg)
-	
-	if (q) { url += '&q=1'; }
-	//console.log("::: Send to XLBot :::", session.message.text,url);
-	
-	var options = { host: 'xlapp.cloware.com', path: url };
 
-    _http.request(options, function(response) {
+	if (msg=='clear')
+	{
+		http_cookie=null;
+		session.userData.http_cookie=null;
+	}
+	
+	if (session.userData.http_cookie)
+	{
+		http_cookie=session.userData.http_cookie;
+		console.log("*** USING EXISTING HTTP  **** ",http_cookie);
+	}
+	else
+	{
+		console.log("*** USING NEW HTTP  **** ",http_cookie);
+	}
+	
+	//var url = '/voiceui/setup/msbot.php?a='+XLAPP_NUMBER+'&u='+session.message.user.id+'&m='+encodeURI(msg)
+	//if (q) { url += '&q=1'; }
+	
+	var url = '/voiceui/setup/index_WS.php?a='+XLAPP_NUMBER;
+	console.log("::: Send to XLBot :::", msg ,url);
+	
+	var JData="JData="+encodeURI( JSON.stringify( 
+					{ 	"Debug" :"0", 
+						"Action" : "PostMessageWS" , 
+						"TextType":q ,
+						"ChatText": msg
+					} 
+					) );
+	
+	
+	var options = { host: XL_APP_HOST , 
+					path: url ,
+					
+					method: 'POST',
+      				headers: {
+          						'Content-Type': 'application/x-www-form-urlencoded',
+          						'Content-Length': Buffer.byteLength(JData),
+          						'Cookie': http_cookie
+      						}
+					};
+
+    var post_req = _http.request(options, function(response) {
 
 		//another chunk of data has been recieved, so append it to `res`
 		response.on('data', function (chunk) {	res += chunk;	});
 
 		//the whole response has been recieved, so parse the JSON for message
-		response.on('end', function () { ParseXLResponse(res, session); } );
+		response.on('end', function () { 
+			//if (!session.userData.http_cookie)
+			if (response.headers['set-cookie'])
+			{
+				session.userData.http_cookie=response.headers['set-cookie'];
+				console.log("::: Response Headers :::", response.headers['set-cookie']);
+			}
+			ParseXLResponse(res, session); } );
 		
-	}).end();
+	});
+	
+	post_req.write(JData);
+	post_req.end();
 };
+
+function FixName(str)
+{
+   str=str.replace('_',' ');
+   return str.replace(/\w\S*/g, function(txt){return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();});
+}
 
 //....................................................................................
 //Step 2: Parse the response from XLBot and get the individual JSON message objects
@@ -120,22 +178,108 @@ function SendToXLBot(session, msg, q){
 function ParseXLResponse(XLBotResponse, session){
 	try {
 		var _jsonAll = JSON.parse(XLBotResponse);
-		//console.log("::: From XLBot :::", _jsonAll);
-		var _json=_jsonAll.MSBot;
+		console.log("::: From XLBot :::", _jsonAll);
+		
+		var _json=_jsonAll.Reply;
+		//console.log("::: From XLBot :::",_json);
+		
+		var quick_replies = _jsonAll.AllParameters.QuickReply;
 			
 		for(var i=0;i<_json.length;i++)	{ //For each response message from XLBot send as seperate msg bubbles
-			var prompt = _json[i].message.prompt; 
-			var quick_replies = _json[i].message.quick_replies; 
-			//console.log("::: From XLBot prompt :::", prompt);
+			var prompt_text = _json[i].Text; 
+			var prompt_type = _json[i].Type; 
 			
-			if (prompt.Type=="Text") { //Response type : Text
-				session.send(prompt.Text);
-			} 
-			else if (quick_replies.length>0) { //Response type : Choices (i.e. XLBot response contains "quick_replies")
+			console.log("::: From XLBot prompt :::", prompt_type ," - ", prompt_text );
+			
+			if ((i==_json.length-1)&&(quick_replies.length>0))
+			{
+				 //Response type : Choices (i.e. XLBot response contains "quick_replies")
+				_json[i].quick_replies=quick_replies;
 				session.beginDialog('/choice', _json[i]);
 			}
-			else if (prompt.Type=="ButtonList") { //Response type : Buttonlist
-				session.beginDialog('/btnlist', _json[i]);
+			else
+			{
+				if ((prompt_type=="Text")||
+					(prompt_type=="GPS")||
+					(prompt_type=="Date")
+					) 
+				{ //Response type : Text
+					session.send(prompt_text);
+				} 
+				else if (prompt_type=="Image")
+				{
+					var ImgURL='http://'+XL_APP_HOST + "/voiceui/" + _json[i].Url;
+					//console.log("::: ImgURL :::", ImgURL );
+					
+						session.send({
+						  "type": "message",
+						  "text": prompt_text ,
+						  "attachments": [
+						    {
+						      "contentType": "image/jpg",
+						      "contentUrl": ImgURL,
+						      "name": prompt_text
+						    }
+						  ]
+						});
+				}
+				else if (prompt_type=="Link")
+				{
+						session.send({
+							  "type": "message",
+							  "text": "Link to a URL.",
+							  "attachments": [
+							    {
+							      "contentUrl": _json[i].Url,
+							      "name": _json[i].Label
+							    }
+							  ]
+							});
+							
+				}
+				else if (prompt_type=="Download")
+				{
+						session.send({
+								  "type": "message",
+								  "text": _json[i].Label,
+								  "attachments": [
+								    {
+								      "contentType": "application/binary",
+								      "contentUrl": _json[i].Url,
+								      "name": _json[i].Url
+								    }
+								  ]
+								});
+							
+				}
+				else if (prompt_type=="ButtonList") { //Response type : Buttonlist
+					//session.beginDialog('/btnlist', _json[i]);
+					var buttons=[];
+					var btnlist=_json[i].Options;
+					for(var j=0; j<btnlist.length; j++) 
+					{
+						buttons.push({
+						            "type": "imBack",
+						            "title": btnlist[j].Label,
+						            "value": btnlist[j].Value
+						          });
+					}
+			
+						session.send({
+							  "type": "message",
+							  "attachmentLayout": "list",
+							  "text": "",
+							  "attachments": [
+							    {
+							      "contentType": "application/vnd.microsoft.card.hero",
+							      "content": {
+							        "text": FixName(_json[i].Name),
+							        "buttons": buttons
+							      }
+							    }
+							  ]
+							});
+				}
 			}
 		}
 	}
@@ -173,21 +317,24 @@ bot.dialog('/', function (session)
 bot.dialog('/choice', [
     function (session, obj, next) {
 		//EXAMPLE value in qr == [{"content_type":"text","title":"yes","payload":"yes"},{"content_type":"text","title":"no","payload":"no"}]
-		var prompt = obj.message.prompt; 
-		var qr = obj.message.quick_replies; 
-		
+		//var prompt = obj.message.prompt; 
+		//var qr = obj.message.quick_replies; 
+		var qr=obj.quick_replies;
+		var prompt_text = obj.Text; 
 		
 		var choices={} , tempObj;
 		
 		for(var i=0; i<qr.length; i++) {
-			tempObj = qr[i];
-			choices[tempObj.title] = tempObj.payload;
+			//tempObj = qr[i];
+			//choices[tempObj.title] = tempObj.payload;
+			
+			choices[qr[i]] = qr[i];
 			
 			//console.log("Choices " ,tempObj);
 		}
 		//use Azure Bot's "builder.Prompts.choice" instead of "session.send"
 		//builder.Prompts.choice(session, obj.message[obj.message.length-1].text , choices , {listStyle: builder.ListStyle.button });
-		builder.Prompts.choice(session, prompt.Text , choices , {listStyle: builder.ListStyle.button });
+		builder.Prompts.choice(session, prompt_text , choices , {listStyle: builder.ListStyle.button });
     },
     function (session, results) { //Choice received, send to XLBot
 		var resp  = results.response.entity;
@@ -201,9 +348,8 @@ bot.dialog('/choice', [
 bot.dialog('/btnlist', [
     function (session, obj, next) {
 		//EXAMPLE value in qr == [{"content_type":"text","title":"yes","payload":"yes"},{"content_type":"text","title":"no","payload":"no"}]
-		var prompt = obj.message.prompt; 
-		var btnlist = obj.message.prompt.Options; 
-		
+		var prompt_text = obj.Text;
+		var btnlist = obj.Options; 
 		
 		var choices={} , tempObj;
 		
@@ -215,7 +361,7 @@ bot.dialog('/btnlist', [
 		}
 		//use Azure Bot's "builder.Prompts.choice" instead of "session.send"
 		//builder.Prompts.choice(session, obj.message[obj.message.length-1].text , choices , {listStyle: builder.ListStyle.button });
-		builder.Prompts.choice(session, prompt.Text , choices , {listStyle: builder.ListStyle.button });
+		builder.Prompts.choice(session, prompt_text , choices , {listStyle: builder.ListStyle.button });
     },
     function (session, results) { //Choice received, send to XLBot
 		var resp  = results.response.entity;

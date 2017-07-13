@@ -24,9 +24,11 @@ var LUISReply = {"topScoringIntent": "", "entities" : [] };
 // XLBot Integration config
 //____________________________________________________________________________________
 //
+// LIVE ENV
 var XLAPP_NUMBER = 23103;
 var XL_APP_HOST='xlapp.cloware.com';
 
+// DEVELOPMENT ENV
 //var XLAPP_NUMBER = 912;
 //var XL_APP_HOST='lxlapp.cloware.com';
 
@@ -172,6 +174,12 @@ function FixName(str)
    return str.replace(/\w\S*/g, function(txt){return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();});
 }
 
+function GetImageURL(Url)
+{
+	var ImgURL='http://'+XL_APP_HOST + "/voiceui/" + Url;
+	return ImgURL;
+}
+
 //....................................................................................
 //Step 2: Parse the response from XLBot and get the individual JSON message objects
 //then respond to user
@@ -208,16 +216,13 @@ function ParseXLResponse(XLBotResponse, session){
 				} 
 				else if (prompt_type=="Image")
 				{
-					var ImgURL='http://'+XL_APP_HOST + "/voiceui/" + _json[i].Url;
-					//console.log("::: ImgURL :::", ImgURL );
-					
 						session.send({
 						  "type": "message",
 						  "text": prompt_text ,
 						  "attachments": [
 						    {
 						      "contentType": "image/jpg",
-						      "contentUrl": ImgURL,
+						      "contentUrl": GetImageURL(_json[i].Url),
 						      "name": prompt_text
 						    }
 						  ]
@@ -280,6 +285,98 @@ function ParseXLResponse(XLBotResponse, session){
 							  ]
 							});
 				}
+				else if (prompt_type=="ImageButton") 
+				{ //Response type : Buttonlist
+					
+					var buttons=[];
+					var btnlist=_json[i].Options;
+					for(var j=0; j<btnlist.length; j++) 
+					{
+						buttons.push({
+						            "type": "imBack",
+						            "title": btnlist[j].Label,
+						            "value": btnlist[j].Value
+						          });
+					}
+			
+						session.send({
+							  "type": "message",
+							  "attachmentLayout": "list",
+							  "text": "",
+							  "attachments": [
+							    {
+							      "contentType": "application/vnd.microsoft.card.hero",
+							      "content": {
+									"title": FixName(_json[i].Name),
+                					//"subtitle": "subtitle goes here",
+							        //"text": FixName(_json[i].Name),
+							        
+									"images": [
+							                    {
+							                        "url": GetImageURL(_json[i].Url),
+							                        //"alt": "picture of a duck",
+							                        /*"tap": {
+							                            "type": "playAudio",
+							                            "value": "url to an audio track of a duck call goes here"
+							                        }*/
+							                    }
+							                ],
+							        "buttons": buttons
+							      }
+							    }
+							  ]
+							});
+				}
+				else if (prompt_type=="ImageButtonList") { //Response type : Buttonlist
+					
+					var Options=_json[i].Options;
+					var Cards=[];
+					for(var k=0; k<Options.length; k++) 
+					{
+						var buttons=[];
+						btnlist=Options[k].Buttons;
+
+						for(var j=0; j<btnlist.length; j++) 
+						{
+							buttons.push({
+							            "type": "imBack",
+							            "title": btnlist[j].Label,
+							            "value": btnlist[j].Value
+							          });
+						}
+						
+						Cards.push({
+							      "contentType": "application/vnd.microsoft.card.hero",
+							      "content": {
+									"title": Options[k].Desc,
+                					//"subtitle": "subtitle goes here",
+							        //"text": FixName(_json[i].Name),
+							        
+									"images": [
+							                    {
+							                        "url": GetImageURL(Options[k].Url),
+							                        //"alt": "picture of a duck",
+							                        /*"tap": {
+							                            "type": "playAudio",
+							                            "value": "url to an audio track of a duck call goes here"
+							                        }*/
+							                    }
+							                ],
+							        "buttons": buttons
+							      }
+							    }
+								);
+					}
+					
+			
+						session.send({
+							  "type": "message",
+							  "attachmentLayout": "carousel",
+							  "text": "",
+							  "attachments":Cards
+							});
+				}
+				
 			}
 		}
 	}
@@ -295,11 +392,6 @@ function ParseXLResponse(XLBotResponse, session){
 //____________________________________________________________________________________
 bot.dialog('/', function (session) 
 {
-    //Directly Hook to XLBot as it maintains state and sessions
-	//session.beginDialog('/showShirts');
-	//session.beginDialog('/demoSuggestedActions');
-	//session.beginDialog('/demoImageCarousel');
-	
 	//Evaluate with LUIS API - to get Intents and Entities | Asynchronous call
 	/*LUISclient.predict(session.message.text, {
 		onSuccess: function (response) { //On success of prediction
@@ -310,6 +402,7 @@ bot.dialog('/', function (session)
 		onFailure: function (err) { console.error(err); } //On failure of prediction
 	}); */
 	
+    //Directly Hook to XLBot as it maintains state and sessions
 	SendToXLBot(session); //Once LUIS Async call complets, send session + LUISReply to Xlapp
 });
 
@@ -371,64 +464,6 @@ bot.dialog('/btnlist', [
 		SendToXLBot(session, resp, 1); 
     }
 ]); 
-
-//....................................................................................
-// Dialog to demonstrate "image carousel" using MS Hero Card
-/*bot.dialog('/demoImageCarousel', function (session) {
-    var msg = new builder.Message(session);
-    msg.attachmentLayout(builder.AttachmentLayout.carousel)
-    msg.attachments([
-        new builder.HeroCard(session)
-            .title("Classic White T-Shirt")
-            .subtitle("100% Soft and Luxurious Cotton")
-            .text("Price is $25 and carried in sizes (S, M, L, and XL)")
-            .images([builder.CardImage.create(session, 'https://avatars3.githubusercontent.com/u/6422482?v=3&s=460')])
-            .buttons([
-                builder.CardAction.imBack(session, "buy classic white t-shirt", "Buy")
-            ]),
-        new builder.HeroCard(session)
-            .title("Classic Gray T-Shirt")
-            .subtitle("100% Soft and Luxurious Cotton")
-            .text("Price is $25 and carried in sizes (S, M, L, and XL)")
-            .images([builder.CardImage.create(session, 'http://www.livemint.com/r/LiveMint/Period1/2011/04/21/Photos/e53743cb-3f31-497f-ac80-f59949a216e4.jpg')])
-            .buttons([
-                builder.CardAction.imBack(session, "buy classic gray t-shirt", "Buy")
-            ])
-    ]);
-    session.send(msg).endDialog();
-}).triggerAction({ matches: /^(show|list)/i }); */
-
-//....................................................................................
-// Dialog to demonstrate "suggested action buttons" - quick reply buttons fixed to footer not linked to message text
-/*bot.dialog('/demoSuggestedActions', function (session) {
-	var msg = new builder.Message(session)
-		.text("Thank you for expressing interest in our premium golf shirt! What color of shirt would you like?")
-		.suggestedActions(
-			builder.SuggestedActions.create(
-					session, [
-						builder.CardAction.imBack(session, "productId=1&color=green", "Green"),
-						builder.CardAction.imBack(session, "productId=1&color=blue", "Blue"),
-						builder.CardAction.imBack(session, "productId=1&color=red", "Red")
-					]
-				));
-	session.send(msg);
-}); */
-
-//....................................................................................
-/*bot.dialog('SearchHotels', function(session, args,next){
-	console.log('::: session.message :::\'%s\'', JSON.stringify(session.message));
-	session.send('Generic Intent handler. Your message == \'%s\'', session.message.text);
-	
-}).triggerAction({ 
-	matches: /SearchHotels/i ,
-	onSelectAction: (session, args, next) => {
-        //when a triggerAction executes, the dialog stack is cleared.
-		//Hence use onSelectAction to Add this dialog to the dialog stack 
-        //(override the default behavior of replacing the stack)
-        session.beginDialog(args.action, args);
-    }
-
-}); */
 
 //....................................................................................
 // Add a global endConversation() action that is bound to the 'Goodbye' intent

@@ -1,4 +1,4 @@
-In excel the First column should be the Jump Label it can be numbers or string labels Q1,Q2 etc.
+In excel the First column should be the Jump Label it can be numbers or string labels Q1,Q2, Q3 etc.
 
 Second Column should be the Prompt String like  "What is the Loan Amount ?"
 
